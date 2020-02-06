@@ -28,6 +28,8 @@ static const char * const error_string[MAXERROR] =
 	[E_FAULT]	= "segmentation fault",
 };
 
+static int style = 0x0;
+
 /*
  * Print a number (base <= 16) in reverse order,
  * using specified putch function and associated pointer putdat.
@@ -42,11 +44,11 @@ printnum(void (*putch)(int, void*), void *putdat,
 	} else {
 		// print any needed pad characters before first digit
 		while (--width > 0)
-			putch(padc, putdat);
+			putch(padc | style, putdat);
 	}
 
 	// then print this (the least significant) digit
-	putch("0123456789abcdef"[num % base], putdat);
+	putch("0123456789abcdef"[num % base] | style, putdat);
 }
 
 // Get an unsigned int of various possible sizes from a varargs list,
@@ -92,7 +94,138 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		while ((ch = *(unsigned char *) fmt++) != '%') {
 			if (ch == '\0')
 				return;
-			putch(ch, putdat);
+			// 文本样式控制
+			if (ch == '\e') {
+				ch = *(unsigned char *) fmt++;
+				if (ch == '[') {
+					ch = *(unsigned char *) fmt++;
+					// 颜色编码解析
+					while ('0' <= ch && ch <= '9') {
+						int color = 0;
+						while (1) {
+							color = color * 10 + ch - '0';
+							ch = *fmt++;
+							if (ch < '0' || ch > '9')
+								break;
+						}
+
+						switch (color) {
+							case 5: // 闪烁
+								style ^= 0x8000;
+								break;
+								// 前景
+							case 30: // 黑色
+								style &= 0xF0FF;
+								style |= 0x0000;
+								break;
+							case 31: // 红色
+								style &= 0xF0FF;
+								style |= 0x0400;
+								break;
+							case 32: // 绿色
+								style &= 0xF0FF;
+								style |= 0x0200;
+								break;
+							case 33: // 黄色
+								style &= 0xF0FF;
+								style |= 0x0600;
+								break;
+							case 34: // 蓝色
+								style &= 0xF0FF;
+								style |= 0x0100;
+								break;
+							case 35: // 品红色
+								style &= 0xF0FF;
+								style |= 0x0500;
+								break;
+							case 36: // 青色
+								style &= 0xF0FF;
+								style |= 0x0300;
+							case 37: // 白色（灰）
+								style &= 0xF0FF;
+								style |= 0x0700;
+								break;
+								// 背景
+							case 40: // 黑色
+								style &= 0x7FFF;
+								style |= 0x0000;
+								break;
+							case 41: // 红色
+								style &= 0x7FFF;
+								style |= 0x4000;
+								break;
+							case 42: // 绿色
+								style &= 0x7FFF;
+								style |= 0x2000;
+								break;
+							case 43: // 黄色
+								style &= 0x7FFF;
+								style |= 0x6000;
+								break;
+							case 44: // 蓝色
+								style &= 0x7FFF;
+								style |= 0x1000;
+								break;
+							case 45: // 品红色
+								style &= 0x7FFF;
+								style |= 0x5000;
+								break;
+							case 46: // 青色
+								style &= 0x7FFF;
+								style |= 0x3000;
+								break;
+							case 47: // 白色（灰）
+								style &= 0x7FFF;
+								style |= 0x7000;
+								break;
+								// 亮色前景
+							case 90: // 亮黑色（灰）
+								style &= 0xF0FF;
+								style |= 0x0800;
+								break;
+							case 91: // 亮红色
+								style &= 0xF0FF;
+								style |= 0x0c00;
+								break;
+							case 92: // 亮绿色
+								style &= 0xF0FF;
+								style |= 0x0a00;
+								break;
+							case 93: // 亮黄色
+								style &= 0xF0FF;
+								style |= 0x0e00;
+								break;
+							case 94: // 亮蓝色
+								style &= 0xF0FF;
+								style |= 0x0900;
+								break;
+							case 95: // 亮品红色
+								style &= 0xF0FF;
+								style |= 0x0d00;
+								break;
+							case 96: // 亮青色
+								style &= 0xF0FF;
+								style |= 0x0b00;
+							case 97: // 亮白色
+								style &= 0xF0FF;
+								style |= 0x0f00;
+								break;
+							default: // 重置
+								style = 0x0;
+								break;
+						}
+
+						if (ch == ';')
+							ch = *(unsigned char *) fmt++;
+					}
+					// 文本样式控制结束符
+					if (ch == 'm')
+						continue;
+					else if (ch == '%') // 如果不是结束符，默认自动结束，但是需要打印当前字符
+						break;
+				}
+			}
+			putch(ch | style, putdat);
 		}
 
 		// Process a %-escape sequence
@@ -157,7 +290,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 
 		// character
 		case 'c':
-			putch(va_arg(ap, int), putdat);
+			putch(va_arg(ap, int) | style, putdat);
 			break;
 
 		// error message
@@ -177,21 +310,21 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 				p = "(null)";
 			if (width > 0 && padc != '-')
 				for (width -= strnlen(p, precision); width > 0; width--)
-					putch(padc, putdat);
+					putch(padc | style, putdat);
 			for (; (ch = *p++) != '\0' && (precision < 0 || --precision >= 0); width--)
 				if (altflag && (ch < ' ' || ch > '~'))
-					putch('?', putdat);
+					putch('?' | style, putdat);
 				else
 					putch(ch, putdat);
 			for (; width > 0; width--)
-				putch(' ', putdat);
+				putch(' ' | style, putdat);
 			break;
 
 		// (signed) decimal
 		case 'd':
 			num = getint(&ap, lflag);
 			if ((long long) num < 0) {
-				putch('-', putdat);
+				putch('-' | style, putdat);
 				num = -(long long) num;
 			}
 			base = 10;
@@ -206,10 +339,9 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		// (unsigned) octal
 		case 'o':
 			// Replace this with your code.
-			putch('X', putdat);
-			putch('X', putdat);
-			putch('X', putdat);
-			break;
+			num = getuint(&ap, lflag);
+			base = 8;
+			goto number;
 
 		// pointer
 		case 'p':
@@ -230,12 +362,12 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 
 		// escaped '%' character
 		case '%':
-			putch(ch, putdat);
+			putch(ch | style, putdat);
 			break;
 
 		// unrecognized escape sequence - just print it literally
 		default:
-			putch('%', putdat);
+			putch('%' | style, putdat);
 			for (fmt--; fmt[-1] != '%'; fmt--)
 				/* do nothing */;
 			break;
