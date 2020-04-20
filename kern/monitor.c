@@ -59,16 +59,23 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
   struct Eipdebuginfo info;
-  uintptr_t eip = 0;
+  uintptr_t eip = 0, args[5];
   cprintf("Stack backtrace:\n");
   for (uint32_t ebp = read_ebp(); ebp != 0; ebp = *((uint32_t *)ebp)) {
     eip = *((uint32_t *)ebp + 1);
     debuginfo_eip(eip, &info);
-    cprintf("  ebp %08x  eip %08x  args", ebp, eip);
+    /*cprintf("  ebp %08x  eip %08x  args", ebp, eip);
     for (int i=0; i<info.eip_fn_narg; i++) {
       cprintf(" %08x", *((uintptr_t *)ebp + 2 + i));
     }
-    cprintf("\n");
+    cprintf("\n");*/
+    args[0] = *((uintptr_t *)ebp + 2);
+    args[1] = *((uintptr_t *)ebp + 3);
+    args[2] = *((uintptr_t *)ebp + 4);
+    args[3] = *((uintptr_t *)ebp + 5);
+    args[4] = *((uintptr_t *)ebp + 6);
+    cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x", ebp, eip,
+            args[0], args[1], args[2], args[3], args[4]);
     cprintf("      %s:%d: %.*s+%d\n", info.eip_file, info.eip_line,
             info.eip_fn_namelen, info.eip_fn_name, eip - info.eip_fn_addr);
   }
